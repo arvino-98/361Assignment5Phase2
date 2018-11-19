@@ -180,9 +180,6 @@ void sem_destroy(sem_t **s){
   while ((*s)->q != NULL){
     tcb *tmp = (*s)->q;
     (*s)->q = (*s)->q->next;
-    free(tmp->thread_context->uc_stack.ss_sp);
-    free(tmp->thread_context);
-    free(tmp);
   }
   // free the semaphore itself
   free(*s);
