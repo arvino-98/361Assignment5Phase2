@@ -3,6 +3,8 @@
 TCB_Queue readyQueue;
 TCB_Queue runningQueue;
 
+// calling thread is put at end of ready queue and the head of readyQueue continues
+// execution
 void t_yield()
 {
   if (readyQueue.head != NULL){
@@ -17,6 +19,7 @@ void t_yield()
   }
 }
 
+// initialize main thread and add to runningQueue
 void t_init()
 {
   tcb *tmp = (tcb *) malloc(sizeof(tcb));
@@ -30,6 +33,7 @@ void t_init()
   addThread_ToRunningQueue(tmp);
 }
 
+// create a new thread and add to readyQueue
 int t_create(void (*fct)(int), int id, int pri)
 {
   size_t sz = 0x10000;
@@ -58,6 +62,7 @@ int t_create(void (*fct)(int), int id, int pri)
   addThread_ToReadyQueue(tmp);
 }
 
+// free all memory in running and ready queues
 void t_shutdown(){
   if (runningQueue.head != NULL){
     free(runningQueue.head->thread_context->uc_stack.ss_sp);
@@ -70,9 +75,10 @@ void t_shutdown(){
     free(tmp->thread_context->uc_stack.ss_sp);
     free(tmp->thread_context);
     free(tmp);
-    }
+  }
 }
 
+// terminate the calling thread and continue execution of first thread in readyQueue
 void t_terminate(){
   tcb *tmp = runningQueue.head;
   free(tmp->thread_context->uc_stack.ss_sp);
@@ -81,25 +87,23 @@ void t_terminate(){
   runningQueue.head = readyQueue.head;
   readyQueue.head = readyQueue.head->next;
 
-  //printf("head id %d\n", readyQueue.head->thread_id);
   setcontext(runningQueue.head->thread_context);
 }
 
+// add thread to end of readyQueue
 int addThread_ToReadyQueue(tcb *t){
   if (readyQueue.head == NULL){
-    //printf("[ready Queue is empty. adding %d.]\n", tcb->thread_id);
     t->next = NULL;
     readyQueue.head = t;
     readyQueue.tail = t;
   }
   else {
-    //printf("[Adding %d to end of ready queue.]\n", tcb->thread_id);
     readyQueue.tail->next = t;
     readyQueue.tail = t;
     readyQueue.tail->next = NULL;
   }
 }
-
+ // add thread to end of runningQueue
 int addThread_ToRunningQueue(tcb *t){
   if (runningQueue.head == NULL){
     t->next = NULL;
@@ -113,6 +117,7 @@ int addThread_ToRunningQueue(tcb *t){
   }
 }
 
+// initialize a semaphore
 int sem_init(sem_t **sp, int sem_count)
 {
   *sp = malloc(sizeof(sem_t));
@@ -120,10 +125,13 @@ int sem_init(sem_t **sp, int sem_count)
   (*sp)->q = NULL;
 }
 
+// add a thread to a semaphore's queue
 int addThread_ToSemQueue(sem_t *s, tcb *t){
+  // if queue is empty, add as head
   if (s->q == NULL){
     s->q = t;
   }
+  // else move to end of queue and add there
   else {
     tcb *tmp;
     tmp = s->q;
@@ -135,12 +143,13 @@ int addThread_ToSemQueue(sem_t *s, tcb *t){
   }
 }
 
+// Current Thread ddoes a wait (P) on the specified semaphore
 void sem_wait(sem_t *s){
   sigrelse(SIGINT);
   s->count--;
   if (s->count < 0){
     addThread_ToSemQueue(s, runningQueue.head);
-
+    // block the running thread
     tcb *tmp = runningQueue.head;
     runningQueue.head = readyQueue.head;
     readyQueue.head = readyQueue.head->next;
@@ -153,6 +162,7 @@ void sem_wait(sem_t *s){
   }
 }
 
+// calling thread does a signal (V) on the specified semaphore
 void sem_signal(sem_t *s){
   sigrelse(SIGINT);
   s->count++;
@@ -164,6 +174,16 @@ void sem_signal(sem_t *s){
   sighold(SIGINT);
 }
 
+// destroy any state related to specified semaphore
 void sem_destroy(sem_t **s){
-
+  // free the semaphore's queue
+  while ((*s)->q != NULL){
+    tcb *tmp = (*s)->q;
+    (*s)->q = (*s)->q->next;
+    free(tmp->thread_context->uc_stack.ss_sp);
+    free(tmp->thread_context);
+    free(tmp);
+  }
+  // free the semaphore itself
+  free(*s);
 }
